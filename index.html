@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pramod Tech Video Chat</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #eaf4fc;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+    }
+    .video-container {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    video {
+      width: 45%;
+      border: 2px solid #3498db;
+      border-radius: 8px;
+    }
+    .controls, .chat-area {
+      max-width: 800px;
+      margin: auto;
+      margin-bottom: 20px;
+      background: #fff;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .controls button {
+      margin: 5px;
+      padding: 10px 18px;
+      font-size: 15px;
+      border: none;
+      border-radius: 6px;
+      background-color: #3498db;
+      color: white;
+      cursor: pointer;
+    }
+    .chat-area {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .chat-messages {
+      height: 250px;
+      overflow-y: auto;
+      background: #f0f0f0;
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border: 1px solid #ccc;
+    }
+    .chat-messages .you {
+      align-self: flex-end;
+      background-color: #dcf8c6;
+      padding: 8px 12px;
+      border-radius: 15px 15px 0 15px;
+      max-width: 60%;
+      word-wrap: break-word;
+    }
+    .chat-messages .other {
+      align-self: flex-start;
+      background-color: #fff;
+      padding: 8px 12px;
+      border-radius: 15px 15px 15px 0;
+      max-width: 60%;
+      word-wrap: break-word;
+      border: 1px solid #ccc;
+    }
+    #chatInput {
+      flex: 1;
+      padding: 10px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-right: 10px;
+    }
+    #sendChat {
+      background-color: #2ecc71;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Pramod Tech Video Chat</h1>
+  <div class="video-container">
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
+  </div>
+  <div class="controls">
+    <button onclick="startCall()">Create Room</button>
+    <button onclick="receiveOffer()">Join Room</button>
+    <button onclick="acceptAnswer()">Connect</button>
+    <button onclick="toggleMic()">Toggle Mic</button>
+    <button onclick="toggleVideo()">Toggle Video</button>
+    <button onclick="startScreenShare()">Share Screen</button>
+  </div>
+  <div class="chat-area">
+    <div class="chat-messages" id="chatMessages"></div>
+    <div style="display: flex; align-items: center;">
+      <input type="text" id="chatInput" placeholder="Type a message..." />
+      <button id="sendChat">Send</button>
+    </div>
+  </div>
+  <script>
+    let localStream;
+    let pc = new RTCPeerConnection();
+    let dataChannel = pc.createDataChannel("chat");
+
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
+      localStream = stream;
+      document.getElementById("localVideo").srcObject = stream;
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    });
+
+    pc.ontrack = event => {
+      document.getElementById("remoteVideo").srcObject = event.streams[0];
+    };
+
+    pc.ondatachannel = event => {
+      dataChannel = event.channel;
+      setupDataChannel();
+    };
+
+    function setupDataChannel() {
+      dataChannel.onmessage = e => {
+        const chatBox = document.getElementById("chatMessages");
+        const msgDiv = document.createElement("div");
+        msgDiv.className = "other";
+        msgDiv.innerText = e.data;
+        chatBox.appendChild(msgDiv);
+      };
+    }
+
+    async function startCall() {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      const offerText = btoa(JSON.stringify(offer));
+      prompt("Copy this Room Code and share it:", offerText);
+    }
+
+    async function receiveOffer() {
+      const offerText = prompt("Paste the Room Code to join:");
+      if (!offerText) return;
+      const offer = JSON.parse(atob(offerText));
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      const answerText = btoa(JSON.stringify(answer));
+      prompt("Send this back to the Room Creator:", answerText);
+    }
+
+    async function acceptAnswer() {
+      const answerText = prompt("Paste the answer code to connect:");
+      if (!answerText) return;
+      const answer = JSON.parse(atob(answerText));
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    }
+
+    document.getElementById("sendChat").onclick = () => {
+      const input = document.getElementById("chatInput");
+      const msg = input.value.trim();
+      if (!msg) return;
+      const chatBox = document.getElementById("chatMessages");
+      const newMsg = document.createElement("div");
+      newMsg.className = "you";
+      newMsg.innerText = msg;
+      chatBox.appendChild(newMsg);
+      input.value = "";
+      dataChannel.send(msg);
+    };
+
+    function toggleMic() {
+      if (localStream) {
+        localStream.getAudioTracks().forEach(track => track.enabled = !track.enabled);
+      }
+    }
+
+    function toggleVideo() {
+      if (localStream) {
+        localStream.getVideoTracks().forEach(track => track.enabled = !track.enabled);
+      }
+    }
+
+    async function startScreenShare() {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        document.getElementById('localVideo').srcObject = screenStream;
+      } catch (err) {
+        alert("Screen share not allowed");
+      }
+    }
+  </script>
+</body>
+</html>
